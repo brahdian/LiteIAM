@@ -1,0 +1,86 @@
+{% extends "auth/base.html" %}
+{% block title %}Verify Email{% endblock %}
+
+{% block content %}
+<div class="mb-6 flex justify-center">
+  <div class="flex h-14 w-14 items-center justify-center rounded-2xl bg-indigo-50">
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#5D5FEF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+      <polyline points="22,6 12,13 2,6"/>
+    </svg>
+  </div>
+</div>
+
+<div id="pending-view">
+  <h1 class="mb-1 text-center text-2xl font-bold tracking-tight text-gray-900">Verify your email</h1>
+  <p class="mb-8 text-center text-sm text-gray-500">Click the button below to confirm your email address and activate your account.</p>
+  <button id="verify-btn" onclick="verifyEmail()" class="btn-primary">
+    <span id="btn-label">Verify email address</span>
+    <span id="btn-spinner" class="spinner ml-2 hidden"></span>
+  </button>
+  <p id="verify-error" class="mt-4 hidden text-sm text-center text-red-600" role="alert"></p>
+</div>
+
+<div id="success-view" class="hidden text-center">
+  <div class="mb-4 flex justify-center">
+    <div class="flex h-16 w-16 items-center justify-center rounded-full bg-green-50">
+      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M20 6 9 17l-5-5"/>
+      </svg>
+    </div>
+  </div>
+  <h2 class="mb-2 text-xl font-bold text-gray-900">Email verified!</h2>
+  <p class="mb-6 text-sm text-gray-500">Your account is now active. You can sign in.</p>
+  <a href="/ui/login" class="btn-primary">Sign in</a>
+</div>
+
+<div id="invalid-view" class="hidden text-center">
+  <div class="mb-4 flex justify-center">
+    <div class="flex h-16 w-16 items-center justify-center rounded-full bg-red-50">
+      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>
+      </svg>
+    </div>
+  </div>
+  <h2 class="mb-2 text-xl font-bold text-gray-900">Link expired</h2>
+  <p class="mb-6 text-sm text-gray-500" id="invalid-detail">This verification link has expired or already been used.</p>
+  <a href="/ui/login" class="btn-primary">Back to sign in</a>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const token = qp('token');
+  if (!token) {
+    document.getElementById('pending-view').classList.add('hidden');
+    document.getElementById('invalid-view').classList.remove('hidden');
+    document.getElementById('invalid-detail').textContent = 'No verification token found in this link.';
+  }
+
+  async function verifyEmail() {
+    const btn = document.getElementById('verify-btn');
+    btn.disabled = true;
+    document.getElementById('btn-label').textContent = 'Verifying…';
+    document.getElementById('btn-spinner').classList.remove('hidden');
+    document.getElementById('verify-error').classList.add('hidden');
+
+    try {
+      await authFetch('/auth/verify', { token });
+      document.getElementById('pending-view').classList.add('hidden');
+      document.getElementById('success-view').classList.remove('hidden');
+    } catch (err) {
+      btn.disabled = false;
+      document.getElementById('btn-label').textContent = 'Verify email address';
+      document.getElementById('btn-spinner').classList.add('hidden');
+
+      if (err.status === 400) {
+        document.getElementById('pending-view').classList.add('hidden');
+        document.getElementById('invalid-view').classList.remove('hidden');
+      } else {
+        document.getElementById('verify-error').textContent = err.detail || 'Verification failed. Please try again.';
+        document.getElementById('verify-error').classList.remove('hidden');
+      }
+    }
+  }
+</script>
+{% endblock %}

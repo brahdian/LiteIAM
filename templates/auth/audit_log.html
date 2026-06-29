@@ -1,0 +1,200 @@
+{% extends "auth/base.html" %}
+{% block title %}Audit Log{% endblock %}
+{% block card_class %}w-full max-w-5xl{% endblock %}
+
+{% block content %}
+<div class="min-h-screen bg-[#f8f9fd] p-6">
+  <div class="max-w-5xl mx-auto">
+
+    <!-- Header -->
+    <div class="flex items-center justify-between mb-8">
+      <div>
+        <h1 class="text-2xl font-bold text-gray-900">Audit Log</h1>
+        <p class="text-sm text-gray-500 mt-0.5">All authentication and authorization events</p>
+      </div>
+      <div class="flex gap-2">
+        <button onclick="loadEvents()" class="btn-secondary text-sm gap-1.5">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+          Refresh
+        </button>
+        <a href="/ui/admin/users" class="btn-secondary text-sm">← Users</a>
+      </div>
+    </div>
+
+    <!-- Filters -->
+    <div class="bg-white rounded-2xl border border-gray-100 shadow-[0_20px_50px_rgba(0,0,0,0.05)] p-5 mb-4">
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div>
+          <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Event type</label>
+          <select id="filter-event" class="input-base text-sm" onchange="loadEvents()">
+            <option value="">All events</option>
+            <option value="user.login">Login</option>
+            <option value="user.login.failed">Login failed</option>
+            <option value="user.created">Registration</option>
+            <option value="user.deleted">Deletion (GDPR)</option>
+            <option value="mfa.enrolled">MFA enrolled</option>
+            <option value="magic_link.sent">Magic link sent</option>
+            <option value="magic_link.used">Magic link used</option>
+            <option value="token.issued">Token issued</option>
+            <option value="token.revoked">Token revoked</option>
+            <option value="admin.impersonation">Impersonation</option>
+            <option value="passkey.*">Passkey events</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">User ID</label>
+          <input id="filter-subject" type="text" placeholder="UUID…" class="input-base text-sm"
+                 onkeydown="if(event.key==='Enter')loadEvents()" />
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Since</label>
+          <input id="filter-since" type="datetime-local" class="input-base text-sm" onchange="loadEvents()" />
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Until</label>
+          <input id="filter-until" type="datetime-local" class="input-base text-sm" onchange="loadEvents()" />
+        </div>
+      </div>
+    </div>
+
+    <!-- Table -->
+    <div class="bg-white rounded-2xl border border-gray-100 shadow-[0_20px_50px_rgba(0,0,0,0.05)] overflow-hidden">
+      <div id="loading" class="p-8 text-center text-gray-400 text-sm hidden">Loading…</div>
+      <div id="error-banner" class="p-4 bg-red-50 text-red-700 text-sm rounded-t-2xl hidden"></div>
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="border-b border-gray-100 text-left">
+            <th class="px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">When</th>
+            <th class="px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Event</th>
+            <th class="px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider hidden sm:table-cell">Subject</th>
+            <th class="px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider hidden md:table-cell">IP</th>
+          </tr>
+        </thead>
+        <tbody id="events-body">
+          <tr><td colspan="4" class="px-4 py-10 text-center text-gray-300 text-sm">Loading events…</td></tr>
+        </tbody>
+      </table>
+
+      <!-- Pagination -->
+      <div class="flex items-center justify-between px-4 py-3 border-t border-gray-100">
+        <span id="page-info" class="text-xs text-gray-400">—</span>
+        <div class="flex gap-2">
+          <button id="btn-prev" onclick="changePage(-1)"
+                  class="px-3 py-1 text-xs rounded-lg border border-gray-200 text-gray-600 disabled:opacity-40"
+                  disabled>← Prev</button>
+          <button id="btn-next" onclick="changePage(1)"
+                  class="px-3 py-1 text-xs rounded-lg border border-gray-200 text-gray-600 disabled:opacity-40"
+                  disabled>Next →</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+let _page = 1;
+const _limit = 50;
+let _hasMore = false;
+
+const EVENT_COLORS = {
+  'user.login': 'bg-green-50 text-green-700',
+  'user.login.failed': 'bg-red-50 text-red-700',
+  'user.created': 'bg-blue-50 text-blue-700',
+  'user.deleted': 'bg-orange-50 text-orange-700',
+  'admin.impersonation': 'bg-purple-50 text-purple-700',
+  'token.issued': 'bg-indigo-50 text-indigo-700',
+  'token.revoked': 'bg-gray-100 text-gray-600',
+};
+
+function _eventBadge(event) {
+  const cls = Object.entries(EVENT_COLORS).find(([k]) => event.startsWith(k))?.[1] ?? 'bg-gray-100 text-gray-600';
+  return `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${cls}">${event}</span>`;
+}
+
+function _relTime(iso) {
+  const d = new Date(iso);
+  const diff = Date.now() - d.getTime();
+  if (diff < 60000) return 'just now';
+  if (diff < 3600000) return Math.floor(diff/60000) + 'm ago';
+  if (diff < 86400000) return Math.floor(diff/3600000) + 'h ago';
+  return d.toLocaleString();
+}
+
+async function loadEvents() {
+  const body = document.getElementById('events-body');
+  const loading = document.getElementById('loading');
+  const errBanner = document.getElementById('error-banner');
+
+  errBanner.classList.add('hidden');
+  loading.classList.remove('hidden');
+
+  const params = new URLSearchParams({ page: _page, limit: _limit });
+  const ev = document.getElementById('filter-event').value;
+  const sub = document.getElementById('filter-subject').value.trim();
+  const since = document.getElementById('filter-since').value;
+  const until = document.getElementById('filter-until').value;
+
+  if (ev) params.set('event', ev);
+  if (sub) params.set('subject_id', sub);
+  if (since) params.set('since', new Date(since).toISOString());
+  if (until) params.set('until', new Date(until).toISOString());
+
+  try {
+    const token = localStorage.getItem('access_token') || '';
+    const res = await fetch(`/admin/audit?${params}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    loading.classList.add('hidden');
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: res.statusText }));
+      errBanner.textContent = err.detail || 'Failed to load audit log';
+      errBanner.classList.remove('hidden');
+      body.innerHTML = '<tr><td colspan="4" class="px-4 py-6 text-center text-gray-300 text-sm">Error loading events.</td></tr>';
+      return;
+    }
+
+    const data = await res.json();
+    _hasMore = data.has_more;
+    document.getElementById('page-info').textContent =
+      `Page ${data.page} · ${data.total} total events`;
+    document.getElementById('btn-prev').disabled = _page <= 1;
+    document.getElementById('btn-next').disabled = !_hasMore;
+
+    if (data.items.length === 0) {
+      body.innerHTML = '<tr><td colspan="4" class="px-4 py-10 text-center text-gray-300 text-sm">No events match the current filters.</td></tr>';
+      return;
+    }
+
+    body.innerHTML = data.items.map(e => `
+      <tr class="border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
+        <td class="px-4 py-3 text-gray-500 whitespace-nowrap" title="${e.created_at}">
+          ${_relTime(e.created_at)}
+        </td>
+        <td class="px-4 py-3">${_eventBadge(e.event)}</td>
+        <td class="px-4 py-3 text-gray-400 font-mono text-xs hidden sm:table-cell">
+          ${e.subject_id ? e.subject_id.split('-')[0] + '…' : '—'}
+        </td>
+        <td class="px-4 py-3 text-gray-400 text-xs hidden md:table-cell">
+          ${e.ip_address || '—'}
+        </td>
+      </tr>
+    `).join('');
+
+  } catch (err) {
+    loading.classList.add('hidden');
+    errBanner.textContent = 'Network error: ' + err.message;
+    errBanner.classList.remove('hidden');
+  }
+}
+
+function changePage(delta) {
+  _page = Math.max(1, _page + delta);
+  loadEvents();
+}
+
+// Auto-load on page open
+loadEvents();
+</script>
+{% endblock %}

@@ -1,0 +1,165 @@
+{% extends "auth/base.html" %}
+{% block title %}Two-Factor Authentication{% endblock %}
+
+{% block content %}
+<div class="mb-6 flex justify-center">
+  <div class="flex h-14 w-14 items-center justify-center rounded-2xl bg-indigo-50">
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#5D5FEF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <rect x="5" y="11" width="14" height="10" rx="2"/>
+      <path d="M8 11V7a4 4 0 0 1 8 0v4"/>
+      <circle cx="12" cy="16" r="1" fill="#5D5FEF" stroke="none"/>
+    </svg>
+  </div>
+</div>
+
+<h1 class="mb-1 text-center text-2xl font-bold tracking-tight text-gray-900">Two-factor authentication</h1>
+<p class="mb-8 text-center text-sm text-gray-500">Enter the 6-digit code from your authenticator app</p>
+
+<!-- Countdown ring -->
+<div class="mb-6 flex justify-center">
+  <div class="relative h-14 w-14">
+    <svg class="absolute inset-0 -rotate-90" viewBox="0 0 56 56" fill="none" aria-hidden="true">
+      <circle cx="28" cy="28" r="24" stroke="#e5e7eb" stroke-width="4"/>
+      <circle id="countdown-ring" cx="28" cy="28" r="24"
+              stroke="#5D5FEF" stroke-width="4" stroke-linecap="round"
+              stroke-dasharray="150.8" stroke-dashoffset="0"
+              style="transition: stroke-dashoffset 1s linear"/>
+    </svg>
+    <span id="countdown-num" class="absolute inset-0 flex items-center justify-center text-lg font-bold text-brand">30</span>
+  </div>
+</div>
+
+<form id="totp-form" novalidate>
+  <!-- 6-digit code input split into individual boxes -->
+  <div class="mb-6 flex justify-center gap-2" id="code-boxes">
+    {% for i in range(6) %}
+    <input type="text" inputmode="numeric" pattern="[0-9]" maxlength="1"
+           class="code-box h-12 w-10 rounded-xl border border-gray-200 text-center text-lg font-bold text-gray-900 focus:border-[#5D5FEF] focus:outline-none focus:ring-4 focus:ring-[#5D5FEF]/10 transition-all"
+           aria-label="Digit {{ i + 1 }}" autocomplete="{{ 'one-time-code' if i == 0 else 'off' }}" />
+    {% endfor %}
+  </div>
+
+  <p id="code-error" class="mb-4 hidden text-center text-sm text-red-600" role="alert"></p>
+
+  <!-- Remember this device -->
+  <label class="mb-5 flex cursor-pointer items-center gap-2.5">
+    <input type="checkbox" id="remember-device" class="h-4 w-4 rounded border-gray-300 accent-[#5D5FEF]" />
+    <span class="text-sm text-gray-600">Remember this device for 30 days</span>
+  </label>
+
+  <button id="submit-btn" type="submit" class="btn-primary">
+    <span id="btn-label">Verify</span>
+    <span id="btn-spinner" class="spinner ml-2 hidden"></span>
+  </button>
+</form>
+
+<div class="mt-6 flex flex-col items-center gap-2">
+  <a href="/ui/login" class="text-sm text-gray-400 hover:text-gray-600 hover:underline">← Back to sign in</a>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const userId = qp('user_id') || '{{ user_id | default("") }}';
+  const mfaToken = qp('token') || '{{ token | default("") }}';
+  const tenantId = qp('tenant_id') || '{{ tenant_id | default("") }}';
+  const nextUrl = qp('next') || '/';
+
+  // --- Countdown timer (TOTP window = 30s) ---
+  const ring = document.getElementById('countdown-ring');
+  const numEl = document.getElementById('countdown-num');
+  const CIRC = 150.8; // 2π×24
+
+  function tick() {
+    const now = Math.floor(Date.now() / 1000);
+    const rem = 30 - (now % 30);
+    numEl.textContent = rem;
+    const offset = CIRC * (1 - rem / 30);
+    ring.style.strokeDashoffset = offset;
+    if (rem <= 5) {
+      ring.style.stroke = '#ef4444';
+      numEl.style.color = '#ef4444';
+    } else {
+      ring.style.stroke = '#5D5FEF';
+      numEl.style.color = '#5D5FEF';
+    }
+  }
+  tick();
+  setInterval(tick, 1000);
+
+  // --- Split digit boxes ---
+  const boxes = Array.from(document.querySelectorAll('.code-box'));
+  boxes.forEach((box, i) => {
+    box.addEventListener('input', (e) => {
+      const val = e.target.value.replace(/\D/g, '').slice(-1);
+      box.value = val;
+      if (val && i < 5) boxes[i + 1].focus();
+      if (getCode().length === 6) submitCode();
+    });
+    box.addEventListener('keydown', (e) => {
+      if (e.key === 'Backspace' && !box.value && i > 0) {
+        boxes[i - 1].focus(); boxes[i - 1].value = '';
+      }
+      if (e.key === 'ArrowLeft' && i > 0) boxes[i - 1].focus();
+      if (e.key === 'ArrowRight' && i < 5) boxes[i + 1].focus();
+    });
+    box.addEventListener('paste', (e) => {
+      e.preventDefault();
+      const paste = (e.clipboardData || window.clipboardData).getData('text').replace(/\D/g, '').slice(0, 6);
+      paste.split('').forEach((ch, j) => { if (boxes[i + j]) boxes[i + j].value = ch; });
+      const next = Math.min(i + paste.length, 5);
+      boxes[next].focus();
+      if (getCode().length === 6) submitCode();
+    });
+  });
+  boxes[0].focus();
+
+  function getCode() { return boxes.map(b => b.value).join(''); }
+
+  function setLoading(on) {
+    boxes.forEach(b => b.disabled = on);
+    document.getElementById('submit-btn').disabled = on;
+    document.getElementById('btn-label').textContent = on ? 'Verifying…' : 'Verify';
+    document.getElementById('btn-spinner').classList.toggle('hidden', !on);
+  }
+
+  function showError(msg) {
+    const el = document.getElementById('code-error');
+    el.textContent = msg; el.classList.remove('hidden');
+    boxes.forEach(b => { b.classList.add('input-error'); b.value = ''; });
+    boxes[0].focus();
+  }
+
+  async function submitCode() {
+    const code = getCode();
+    if (code.length !== 6) return;
+    const errEl = document.getElementById('code-error');
+    errEl.classList.add('hidden');
+    setLoading(true);
+    try {
+      const rememberDevice = document.getElementById('remember-device').checked;
+      const data = await authFetch('/auth/totp/verify', {
+        code,
+        pending_token: mfaToken,
+        remember_device: rememberDevice,
+      });
+      storeToken(data.access_token, data.token_type);
+      window.location.href = nextUrl;
+    } catch (err) {
+      setLoading(false);
+      if (err.status === 429) {
+        showError('Too many attempts. ' + (err.detail || 'Please wait before trying again.'));
+      } else if (err.status === 400) {
+        showError('Invalid code. Please try again.');
+      } else {
+        showError(err.detail || 'Verification failed.');
+      }
+    }
+  }
+
+  document.getElementById('totp-form').addEventListener('submit', (e) => {
+    e.preventDefault();
+    submitCode();
+  });
+</script>
+{% endblock %}

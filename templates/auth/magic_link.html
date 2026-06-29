@@ -1,0 +1,130 @@
+{% extends "auth/base.html" %}
+{% block title %}Sign In — Magic Link{% endblock %}
+
+{% block content %}
+{% if token %}
+{# ── Auto-verify mode: token present in URL ─────────────────────────── #}
+<div id="verify-view">
+  <div class="mb-6 flex h-14 w-14 items-center justify-center rounded-[1.25rem] bg-indigo-50">
+    <div class="spinner" style="border-color:rgba(93,95,239,.35);border-top-color:#5D5FEF;width:28px;height:28px;border-width:3px"></div>
+  </div>
+  <h1 class="mb-1 text-2xl font-bold tracking-tight text-gray-900">Signing you in…</h1>
+  <p class="text-sm text-gray-500">Verifying your magic link. This only takes a moment.</p>
+</div>
+
+<div id="success-view" class="hidden">
+  <div class="mb-6 flex h-14 w-14 items-center justify-center rounded-[1.25rem] bg-green-50">
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg>
+  </div>
+  <h1 class="mb-1 text-2xl font-bold tracking-tight text-gray-900">You're signed in!</h1>
+  <p class="mb-6 text-sm text-gray-500">Redirecting you to the dashboard…</p>
+  <div class="h-1 w-full overflow-hidden rounded-full bg-gray-100">
+    <div class="h-full animate-[progress_2s_linear_forwards] rounded-full bg-brand" style="width:0%"></div>
+  </div>
+</div>
+
+<div id="error-view" class="hidden">
+  <div class="mb-6 flex h-14 w-14 items-center justify-center rounded-[1.25rem] bg-red-50">
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+  </div>
+  <h1 class="mb-1 text-2xl font-bold tracking-tight text-gray-900">Link expired or already used</h1>
+  <p id="error-detail" class="mb-6 text-sm text-gray-500">Magic links can only be used once and expire after 15 minutes.</p>
+  <a href="/ui/login" class="btn-primary">Back to sign in</a>
+  <a href="/ui/magic-link" class="btn-secondary mt-3">Request a new link</a>
+</div>
+
+{% else %}
+{# ── Request mode: no token, show the send form ─────────────────────── #}
+<div class="mb-6 flex h-14 w-14 items-center justify-center rounded-[1.25rem] bg-indigo-50">
+  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#5D5FEF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+</div>
+<h1 class="mb-1 text-2xl font-bold tracking-tight text-gray-900">Sign in with email</h1>
+<p class="mb-6 text-sm text-gray-500">We'll send a one-click sign-in link to your email — no password needed.</p>
+
+<div id="form-view">
+  <form id="magic-form" novalidate class="space-y-4">
+    <div>
+      <label for="email" class="mb-1.5 block text-sm font-semibold text-gray-800">Work email</label>
+      <input id="email" type="email" autocomplete="email" class="input-base" placeholder="you@company.com" required />
+    </div>
+    <p id="form-error" class="hidden text-sm text-red-600" role="alert"></p>
+    <button type="submit" id="send-btn" class="btn-primary">Send sign-in link</button>
+  </form>
+  <p class="mt-6 text-center text-sm text-gray-500">
+    Remember your password? <a href="/ui/login" class="font-semibold text-brand hover:underline">Sign in</a>
+  </p>
+</div>
+
+<div id="sent-view" class="hidden text-center">
+  <div class="mx-auto mb-6 flex h-14 w-14 items-center justify-center rounded-[1.25rem] bg-green-50">
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+  </div>
+  <h2 class="mb-2 text-lg font-bold text-gray-900">Check your inbox</h2>
+  <p class="mb-6 text-sm text-gray-500">
+    If <strong id="sent-email" class="text-gray-800"></strong> has an account, a sign-in link is on its way.<br/>
+    The link expires in 15 minutes.
+  </p>
+  <button onclick="document.getElementById('form-view').classList.remove('hidden');document.getElementById('sent-view').classList.add('hidden')" class="btn-secondary">Send again</button>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if token %}
+<script>
+  (async () => {
+    const token = {{ token | tojson }};
+    try {
+      const r = await fetch('/auth/magic-link/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token }),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(data.detail || 'Link invalid or expired.');
+
+      localStorage.setItem('auth_access_token', data.access_token);
+      document.getElementById('verify-view').classList.add('hidden');
+      document.getElementById('success-view').classList.remove('hidden');
+
+      const next = new URLSearchParams(location.search).get('next') || '/ui/account';
+      setTimeout(() => { location.href = next; }, 2000);
+    } catch (err) {
+      document.getElementById('verify-view').classList.add('hidden');
+      document.getElementById('error-view').classList.remove('hidden');
+      const el = document.getElementById('error-detail');
+      if (el) el.textContent = err.message;
+    }
+  })();
+</script>
+{% else %}
+<script>
+  document.getElementById('magic-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const email = document.getElementById('email').value.trim();
+    const errEl = document.getElementById('form-error');
+    const btn = document.getElementById('send-btn');
+    errEl.classList.add('hidden');
+
+    if (!email) { errEl.textContent = 'Please enter your email.'; errEl.classList.remove('hidden'); return; }
+
+    btn.disabled = true; btn.textContent = 'Sending…';
+    try {
+      const r = await fetch('/auth/magic-link/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      });
+      if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.detail || 'Failed to send.'); }
+      document.getElementById('sent-email').textContent = email;
+      document.getElementById('form-view').classList.add('hidden');
+      document.getElementById('sent-view').classList.remove('hidden');
+    } catch (err) {
+      errEl.textContent = err.message;
+      errEl.classList.remove('hidden');
+      btn.disabled = false; btn.textContent = 'Send sign-in link';
+    }
+  });
+</script>
+{% endif %}
+{% endblock %}

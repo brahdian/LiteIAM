@@ -1,0 +1,135 @@
+{% extends "auth/base.html" %}
+
+{% block title %}Authorize Access{% endblock %}
+
+{% block content %}
+<div class="min-h-screen bg-[#f8f9fd] flex items-center justify-center p-4">
+  <div class="w-full max-w-md">
+
+    <!-- Logo -->
+    <div class="flex justify-center mb-8">
+      {% include "auth/_logo.html" ignore missing %}
+      <svg width="44" height="44" viewBox="0 0 44 44" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect width="44" height="44" rx="11" fill="url(#logoGradient)"/>
+        <path d="M22 10L30 30H14L22 10Z" fill="white" opacity="0.9"/>
+        <path d="M17 24H27" stroke="white" stroke-width="2" stroke-linecap="round"/>
+        <defs>
+          <linearGradient id="logoGradient" x1="0" y1="0" x2="44" y2="44" gradientUnits="userSpaceOnUse">
+            <stop stop-color="#5D5FEF"/><stop offset="1" stop-color="#4338CA"/>
+          </linearGradient>
+        </defs>
+      </svg>
+    </div>
+
+    <!-- Card -->
+    <div class="bg-white rounded-[2rem] border border-gray-100 shadow-[0_20px_50px_rgba(0,0,0,0.05)] p-8">
+      <h1 class="text-2xl font-bold text-gray-900 mb-1 text-center">Authorize Access</h1>
+      <p class="text-sm text-gray-500 text-center mb-6">
+        An application is requesting access to your account
+      </p>
+
+      <!-- Client info -->
+      <div class="flex items-center gap-3 bg-gray-50 rounded-2xl p-4 mb-6">
+        <div class="w-10 h-10 rounded-xl bg-brand-subtle flex items-center justify-center text-brand font-bold text-lg select-none">
+          {{ client_id[0]|upper }}
+        </div>
+        <div>
+          <p class="font-semibold text-gray-800 text-sm">{{ client_id }}</p>
+          <p class="text-xs text-gray-400 break-all">{{ redirect_uri }}</p>
+        </div>
+      </div>
+
+      <!-- Requested scopes -->
+      <div class="mb-6">
+        <p class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Permissions requested</p>
+        <ul class="space-y-2">
+          {% for s in scope_list %}
+          <li class="flex items-center gap-2 text-sm text-gray-700">
+            <svg class="w-4 h-4 text-brand flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+            </svg>
+            <span class="font-medium">{{ s }}</span>
+            {% if s == 'openid' %}<span class="text-gray-400">— Verify your identity</span>
+            {% elif s == 'email' %}<span class="text-gray-400">— Access your email address</span>
+            {% elif s == 'profile' %}<span class="text-gray-400">— Access your profile info</span>
+            {% elif s == 'offline_access' %}<span class="text-gray-400">— Stay signed in when you're away</span>
+            {% else %}<span class="text-gray-400">— Custom scope</span>
+            {% endif %}
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
+
+      <!-- Action buttons -->
+      <div class="flex gap-3">
+        <button id="denyBtn" class="flex-1 h-11 rounded-xl border border-gray-200 text-gray-600 font-semibold text-sm hover:bg-gray-50 transition-colors">
+          Deny
+        </button>
+        <button id="allowBtn" class="flex-1 h-11 rounded-xl bg-[#5D5FEF] text-white font-semibold text-sm shadow-[0_4px_14px_rgba(93,95,239,0.30)] hover:bg-[#4d4fdf] transition-colors flex items-center justify-center gap-2">
+          <span id="allowLabel">Allow Access</span>
+          <svg id="allowSpinner" class="hidden w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none">
+            <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" stroke-dasharray="15 50" stroke-linecap="round"/>
+          </svg>
+        </button>
+      </div>
+
+      <p class="text-xs text-gray-400 text-center mt-4">
+        Only allow access to apps you trust
+      </p>
+    </div>
+
+  </div>
+</div>
+
+<script>
+const CONSENT_PARAMS = {
+  client_id: {{ client_id | tojson }},
+  redirect_uri: {{ redirect_uri | tojson }},
+  scope: {{ scope | tojson }},
+  state: {{ state | tojson }},
+  code_challenge: {{ code_challenge | tojson }},
+  code_challenge_method: {{ code_challenge_method | tojson }},
+  nonce: {{ nonce | tojson }},
+};
+
+document.getElementById('denyBtn').addEventListener('click', () => {
+  const u = new URL(CONSENT_PARAMS.redirect_uri);
+  u.searchParams.set('error', 'access_denied');
+  if (CONSENT_PARAMS.state) u.searchParams.set('state', CONSENT_PARAMS.state);
+  window.location.href = u.toString();
+});
+
+document.getElementById('allowBtn').addEventListener('click', async () => {
+  document.getElementById('allowLabel').textContent = 'Authorizing…';
+  document.getElementById('allowSpinner').classList.remove('hidden');
+  document.getElementById('allowBtn').disabled = true;
+
+  const token = localStorage.getItem('auth_token');
+  if (!token) {
+    // Not logged in — redirect to login with current URL as next
+    const next = encodeURIComponent(window.location.href);
+    window.location.href = `/ui/login?next=${next}`;
+    return;
+  }
+
+  try {
+    const res = await fetch('/oauth/consent', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify(CONSENT_PARAMS),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || 'Consent failed');
+    }
+    const { redirect_url } = await res.json();
+    window.location.href = redirect_url;
+  } catch (e) {
+    document.getElementById('allowLabel').textContent = 'Allow Access';
+    document.getElementById('allowSpinner').classList.add('hidden');
+    document.getElementById('allowBtn').disabled = false;
+    showToast('error', e.message || 'Authorization failed');
+  }
+});
+</script>
+{% endblock %}

@@ -1,0 +1,268 @@
+{% extends "auth/base.html" %}
+{% block title %}Set Up Authenticator{% endblock %}
+
+{% block head %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" integrity="sha512-CNgIRecGo7nphbeZ04Sc13ka07paqdeTu0WR1IM4kNcpmBAUSHSQX0FslNhTDadL4zsIS4HWcgIeuVC4xRCMw==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+{% endblock %}
+
+{% block content %}
+<div class="mb-6 flex justify-center">
+  <div class="flex h-14 w-14 items-center justify-center rounded-2xl bg-indigo-50">
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#5D5FEF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+    </svg>
+  </div>
+</div>
+
+<h1 class="mb-1 text-center text-2xl font-bold tracking-tight text-gray-900">Set up authenticator</h1>
+<p class="mb-8 text-center text-sm text-gray-500">Scan the QR code with your authenticator app</p>
+
+<!-- Step indicator -->
+<div class="mb-8 flex items-center justify-center gap-2">
+  <div id="step-dot-1" class="h-2 w-6 rounded-full bg-brand"></div>
+  <div id="step-dot-2" class="h-2 w-2 rounded-full bg-gray-200"></div>
+</div>
+
+<!-- Step 1: QR code display -->
+<div id="step-1">
+  <div class="mb-6 flex flex-col items-center">
+    <div id="qr-loading" class="mb-4 flex h-48 w-48 items-center justify-center rounded-2xl border border-gray-100 bg-gray-50">
+      <div class="spinner" style="border-color:#e5e7eb;border-top-color:#5D5FEF;width:24px;height:24px;"></div>
+    </div>
+    <div id="qr-code" class="hidden rounded-2xl border border-gray-100 p-3 shadow-sm"></div>
+  </div>
+
+  <div id="manual-section" class="hidden mb-6 rounded-xl border border-gray-200 bg-gray-50 p-4">
+    <p class="mb-1 text-xs font-semibold uppercase tracking-wider text-gray-500">Manual entry code</p>
+    <div class="flex items-center gap-2 mt-2">
+      <code id="totp-secret" class="flex-1 break-all rounded-lg bg-white px-3 py-2 text-sm font-mono text-gray-900 border border-gray-200 select-all"></code>
+      <button type="button" onclick="copySecret()" title="Copy"
+              class="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 hover:text-brand hover:border-brand transition-colors focus:outline-none focus:ring-2 focus:ring-brand/20">
+        <svg id="copy-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+
+  <button type="button" id="show-manual-btn" onclick="toggleManual()"
+          class="mb-6 w-full text-center text-sm text-gray-400 hover:text-brand hover:underline focus:outline-none">
+    Can't scan? Enter code manually
+  </button>
+
+  <button type="button" id="next-btn" class="btn-primary" onclick="goToStep2()">
+    I've scanned the code → Next
+  </button>
+</div>
+
+<!-- Step 2: Verify first code -->
+<div id="step-2" class="hidden">
+  <p class="mb-6 text-center text-sm text-gray-500">Enter the 6-digit code from your authenticator app to confirm setup</p>
+
+  <div class="mb-6 flex justify-center gap-2" id="code-boxes">
+    {% for i in range(6) %}
+    <input type="text" inputmode="numeric" pattern="[0-9]" maxlength="1"
+           class="code-box h-12 w-10 rounded-xl border border-gray-200 text-center text-lg font-bold text-gray-900 focus:border-[#5D5FEF] focus:outline-none focus:ring-4 focus:ring-[#5D5FEF]/10 transition-all"
+           aria-label="Digit {{ i + 1 }}" autocomplete="{{ 'one-time-code' if i == 0 else 'off' }}" />
+    {% endfor %}
+  </div>
+
+  <p id="code-error" class="mb-4 hidden text-center text-sm text-red-600" role="alert"></p>
+
+  <button id="activate-btn" type="button" class="btn-primary" onclick="activateTotp()">
+    <span id="activate-label">Activate</span>
+    <span id="activate-spinner" class="spinner ml-2 hidden"></span>
+  </button>
+
+  <button type="button" onclick="goToStep1()" class="btn-secondary mt-3">← Back</button>
+</div>
+
+<!-- Step 3: Success + backup codes -->
+<div id="step-success" class="hidden">
+  <div class="mb-4 flex justify-center">
+    <div class="flex h-16 w-16 items-center justify-center rounded-full bg-green-50">
+      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M20 6 9 17l-5-5"/>
+      </svg>
+    </div>
+  </div>
+  <h2 class="mb-2 text-xl font-bold text-gray-900 text-center">Authenticator set up!</h2>
+  <p class="mb-5 text-sm text-gray-500 text-center">Save your backup codes in a safe place. Each code can only be used once.</p>
+
+  <!-- Backup codes grid -->
+  <div class="mb-4 rounded-2xl border border-gray-200 bg-gray-50 p-5">
+    <div class="flex items-center justify-between mb-3">
+      <p class="text-xs font-semibold uppercase tracking-wider text-gray-500">Backup codes</p>
+      <button type="button" id="copy-codes-btn" onclick="copyBackupCodes()"
+              class="flex items-center gap-1.5 text-xs font-medium text-brand hover:underline focus:outline-none">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+        </svg>
+        <span id="copy-codes-label">Copy all</span>
+      </button>
+    </div>
+    <div id="backup-codes-grid" class="grid grid-cols-2 gap-2">
+      <!-- filled by JS -->
+    </div>
+  </div>
+  <p class="mb-6 text-xs text-amber-600 bg-amber-50 rounded-xl px-4 py-2.5 border border-amber-100 text-center">
+    ⚠️ These codes won't be shown again. Store them offline.
+  </p>
+  <a id="continue-link" href="/" class="btn-primary block text-center">Continue</a>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const userId = qp('user_id') || '{{ user_id | default("") }}';
+  const accessToken = qp('token') || localStorage.getItem('auth_access_token') || '';
+  const nextUrl = qp('next') || '/';
+  let totpSecret = '';
+
+  // Fetch QR code on load
+  async function loadQR() {
+    try {
+      const data = await fetch('/auth/totp/enroll', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + accessToken,
+          'X-Requested-With': 'XMLHttpRequest',
+        },
+        body: JSON.stringify({ user_id: userId }),
+      }).then(r => r.json());
+
+      if (!data.uri) throw new Error('No URI returned');
+      totpSecret = data.secret || '';
+
+      // Hide loader, show QR
+      document.getElementById('qr-loading').classList.add('hidden');
+      const qrEl = document.getElementById('qr-code');
+      qrEl.classList.remove('hidden');
+      new QRCode(qrEl, { text: data.uri, width: 192, height: 192, colorDark: '#0f1324', colorLight: '#fff', correctLevel: QRCode.CorrectLevel.M });
+
+      // Show manual section secret
+      document.getElementById('totp-secret').textContent = totpSecret;
+    } catch (err) {
+      document.getElementById('qr-loading').innerHTML = '<p class="text-sm text-red-500 text-center px-4">Failed to load QR code. Please refresh.</p>';
+    }
+  }
+  loadQR();
+
+  function toggleManual() {
+    const sec = document.getElementById('manual-section');
+    const btn = document.getElementById('show-manual-btn');
+    const hidden = sec.classList.toggle('hidden');
+    btn.textContent = hidden ? "Can't scan? Enter code manually" : 'Hide manual code';
+  }
+
+  function copySecret() {
+    navigator.clipboard.writeText(totpSecret).then(() => {
+      const icon = document.getElementById('copy-icon');
+      icon.innerHTML = '<path d="M20 6 9 17l-5-5"/>';
+      icon.style.stroke = '#16a34a';
+      setTimeout(() => {
+        icon.innerHTML = '<rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>';
+        icon.style.stroke = '';
+      }, 1500);
+    });
+  }
+
+  function goToStep2() {
+    document.getElementById('step-1').classList.add('hidden');
+    document.getElementById('step-2').classList.remove('hidden');
+    document.getElementById('step-dot-1').className = 'h-2 w-2 rounded-full bg-gray-200';
+    document.getElementById('step-dot-2').className = 'h-2 w-6 rounded-full bg-brand';
+    setupBoxes();
+  }
+
+  function goToStep1() {
+    document.getElementById('step-2').classList.add('hidden');
+    document.getElementById('step-1').classList.remove('hidden');
+    document.getElementById('step-dot-1').className = 'h-2 w-6 rounded-full bg-brand';
+    document.getElementById('step-dot-2').className = 'h-2 w-2 rounded-full bg-gray-200';
+  }
+
+  function setupBoxes() {
+    const boxes = Array.from(document.querySelectorAll('.code-box'));
+    boxes.forEach((box, i) => {
+      box.value = '';
+      box.addEventListener('input', (e) => {
+        const val = e.target.value.replace(/\D/g, '').slice(-1);
+        box.value = val;
+        if (val && i < 5) boxes[i + 1].focus();
+      });
+      box.addEventListener('keydown', (e) => {
+        if (e.key === 'Backspace' && !box.value && i > 0) { boxes[i - 1].focus(); boxes[i - 1].value = ''; }
+      });
+      box.addEventListener('paste', (e) => {
+        e.preventDefault();
+        const paste = (e.clipboardData || window.clipboardData).getData('text').replace(/\D/g, '').slice(0, 6);
+        paste.split('').forEach((ch, j) => { if (boxes[i + j]) boxes[i + j].value = ch; });
+      });
+    });
+    boxes[0].focus();
+  }
+
+  async function activateTotp() {
+    const boxes = Array.from(document.querySelectorAll('.code-box'));
+    const code = boxes.map(b => b.value).join('');
+    if (code.length !== 6) { showCodeError('Please enter all 6 digits.'); return; }
+
+    const errEl = document.getElementById('code-error');
+    errEl.classList.add('hidden');
+    document.getElementById('activate-btn').disabled = true;
+    document.getElementById('activate-label').textContent = 'Activating…';
+    document.getElementById('activate-spinner').classList.remove('hidden');
+
+    try {
+      const resp = await fetch('/auth/totp/activate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + accessToken,
+          'X-Requested-With': 'XMLHttpRequest',
+        },
+        body: JSON.stringify({ user_id: userId, code }),
+      });
+      if (!resp.ok) { const d = await resp.json().catch(() => ({})); throw { status: resp.status, detail: d.detail }; }
+      const data = await resp.json();
+
+      // Render backup codes
+      const grid = document.getElementById('backup-codes-grid');
+      (data.backup_codes || []).forEach(c => {
+        const cell = document.createElement('div');
+        cell.className = 'font-mono text-sm text-gray-800 bg-white border border-gray-200 rounded-lg px-3 py-1.5 text-center tracking-widest select-all';
+        cell.textContent = c;
+        grid.appendChild(cell);
+      });
+      window._backupCodes = data.backup_codes || [];
+
+      document.getElementById('step-2').classList.add('hidden');
+      document.getElementById('step-success').classList.remove('hidden');
+      document.getElementById('continue-link').href = nextUrl;
+    } catch (err) {
+      document.getElementById('activate-btn').disabled = false;
+      document.getElementById('activate-label').textContent = 'Activate';
+      document.getElementById('activate-spinner').classList.add('hidden');
+      if (err.status === 400) showCodeError('Invalid code. Check your authenticator app and try again.');
+      else showCodeError(err.detail || 'Activation failed. Please try again.');
+    }
+  }
+
+  function copyBackupCodes() {
+    const text = (window._backupCodes || []).join('\n');
+    navigator.clipboard.writeText(text).then(() => {
+      document.getElementById('copy-codes-label').textContent = 'Copied!';
+      setTimeout(() => { document.getElementById('copy-codes-label').textContent = 'Copy all'; }, 2000);
+    });
+  }
+
+  function showCodeError(msg) {
+    const el = document.getElementById('code-error');
+    el.textContent = msg; el.classList.remove('hidden');
+    document.querySelectorAll('.code-box').forEach(b => { b.classList.add('input-error'); b.value = ''; });
+    document.querySelector('.code-box').focus();
+  }
+</script>
+{% endblock %}

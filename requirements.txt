@@ -1,0 +1,33 @@
+setuptools>=78.1.1
+fastapi==0.138.1
+uvicorn[standard]==0.31.1
+fastapi-users[sqlalchemy]==15.0.2
+authlib==1.6.12
+# NOTE: fastapi-users 15.0.2 hard-pins pyjwt==2.10.1 and python-multipart==0.0.21,
+# both of which still carry open CVEs. The Dockerfile force-upgrades them to the
+# patched pyjwt 2.13.0 and python-multipart 0.0.31 in a second pip step — these are
+# API-compatible (verified: fastapi-users generate_jwt/decode_jwt roundtrip passes).
+# Drop the override once fastapi-users relaxes its transitive pins upstream.
+httpx==0.27.2
+cryptography>=42.0.0
+pyotp==2.9.0
+qrcode[pil]==7.4.2
+Pillow>=10.0.0
+sqlalchemy==2.0.36
+asyncpg==0.30.0
+alembic==1.13.3
+pydantic[email]==2.9.2
+pydantic-settings==2.5.2
+argon2-cffi>=21.3.0
+structlog==24.4.0
+prometheus-fastapi-instrumentator==8.0.2
+casbin==1.36.3
+casbin-async-sqlalchemy-adapter==1.4.0
+webauthn==2.2.0
+slowapi==0.1.9
+# OIDC server — server mode uses authlib.integrations.flask/django but
+# we wire it manually to FastAPI via the low-level authlib.oauth2 layer
+# (authlib is already a dep; no additional package needed)
+
+jinja2>=3.1.4
+aiofiles>=23.2.1

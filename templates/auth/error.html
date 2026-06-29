@@ -1,0 +1,58 @@
+{% extends "auth/base.html" %}
+{% block title %}{{ title | default("Something went wrong") }}{% endblock %}
+
+{% block content %}
+<div class="text-center">
+  <div class="mb-5 flex justify-center">
+    <div class="flex h-16 w-16 items-center justify-center rounded-full
+      {% if status_code and status_code >= 500 %}bg-red-50{% elif status_code == 404 %}bg-gray-50{% else %}bg-amber-50{% endif %}">
+      {% if status_code == 404 %}
+      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+      </svg>
+      {% elif status_code and status_code >= 500 %}
+      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+      </svg>
+      {% else %}
+      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#d97706" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+      </svg>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if status_code %}
+  <p class="mb-1 text-xs font-bold uppercase tracking-widest
+    {% if status_code >= 500 %}text-red-400{% elif status_code == 404 %}text-gray-400{% else %}text-amber-500{% endif %}">
+    Error {{ status_code }}
+  </p>
+  {% endif %}
+
+  <h1 class="mb-3 text-2xl font-bold tracking-tight text-gray-900">
+    {{ title | default("Something went wrong") }}
+  </h1>
+
+  {% if detail %}
+  <p class="mb-6 text-sm text-gray-500 max-w-xs mx-auto">{{ detail }}</p>
+  {% else %}
+  <p class="mb-6 text-sm text-gray-500 max-w-xs mx-auto">
+    An unexpected error occurred. Please try again or contact support if the problem persists.
+  </p>
+  {% endif %}
+
+  <div class="flex flex-col gap-3">
+    {% if back_url %}
+    <a href="{{ back_url }}" class="btn-primary">{{ back_label | default("Go back") }}</a>
+    {% else %}
+    <a href="/ui/login" class="btn-primary">Back to sign in</a>
+    {% endif %}
+    {% if status_code and status_code >= 500 %}
+    <p class="text-xs text-gray-400">
+      If this keeps happening, please contact
+      <a href="mailto:support@example.com" class="text-brand hover:underline">support@example.com</a>
+    </p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
