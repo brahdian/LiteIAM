@@ -1,0 +1,39 @@
+{
+  "dashboard": {
+    "title": "Auth Engine",
+    "description": "Auth engine monitoring dashboard",
+    "tags": ["auth", "monitoring"],
+    "timezone": "browser",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Request Rate",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(auth_requests_total[5m])"
+          }
+        ]
+      },
+      {
+        "id": 2,
+        "title": "Error Rate",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(auth_errors_total[5m])"
+          }
+        ]
+      }
+    ],
+    "refresh": "30s",
+    "time": {
+      "from": "now-6h",
+      "to": "now"
+    },
+    "templating": {
+      "list": []
+    }
+  },
+  "overwrite": true
+}
