@@ -19,3 +19,12 @@ def tenant_id() -> uuid.UUID:
 @pytest.fixture
 def user_id() -> uuid.UUID:
     return uuid.UUID("00000000-0000-0000-0000-000000000002")
+
+
+@pytest.fixture(autouse=True)
+def clear_inflight_tasks():
+    """Clear inflight tasks before and after each test to ensure isolation."""
+    from app.core.events import _inflight_tasks
+    _inflight_tasks.clear()
+    yield
+    _inflight_tasks.clear()
