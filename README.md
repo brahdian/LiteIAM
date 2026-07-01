@@ -26,7 +26,7 @@ A production-ready authentication and authorization service built for multi-tena
 
 ```bash
 # Clone and setup
-git clone <repository-url>
+git clone https://github.com/brahdian/LiteIAM.git
 cd LiteIAM
 
 # Create virtual environment
