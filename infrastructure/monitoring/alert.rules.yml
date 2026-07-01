@@ -1,0 +1,30 @@
+groups:
+  - name: auth_engine
+    interval: 30s
+    rules:
+      - alert: AuthEngineDown
+        expr: up{job="auth-engine"} == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Auth engine is down"
+          description: "The auth engine service has been unreachable for 5 minutes."
+
+      - alert: HighErrorRate
+        expr: rate(auth_errors_total[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High error rate detected"
+          description: "Error rate is above 5% over the last 5 minutes."
+
+      - alert: HighLatency
+        expr: histogram_quantile(0.95, rate(auth_request_duration_seconds_bucket[5m])) > 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High request latency detected"
+          description: "P95 latency is above 1 second."
