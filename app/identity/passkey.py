@@ -67,6 +67,13 @@ async def begin_registration(user: User, db: AsyncSession) -> dict:
         import webauthn
         from webauthn.helpers import generate_challenge, options_to_json
 
+        # Handle both old and new webauthn API versions
+        try:
+            attestation_preference = webauthn.AttestationConveyancePreference.NONE
+        except AttributeError:
+            # Fallback for older versions of webauthn
+            attestation_preference = "none"
+
         challenge = generate_challenge()
 
         # Store challenge in DB keyed to user — single-use, 5-minute TTL
@@ -79,7 +86,7 @@ async def begin_registration(user: User, db: AsyncSession) -> dict:
             user_name=user.email,
             user_display_name=user.email,
             challenge=challenge,
-            attestation=webauthn.AttestationConveyancePreference.NONE,
+            attestation=attestation_preference,
         )
         return options_to_json(options)
     except ImportError:
